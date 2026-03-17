@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      "/api": "https://course.andyjjrt.cc/",
+      "/api": "/api",
     },
   },
 })
