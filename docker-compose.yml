@@ -6,5 +6,6 @@ services:
     volumes:
       - .:/app
       - ./dist:/app/dist
+      - /app/node_modules
     command: ["pnpm", "run", "build"]
   
