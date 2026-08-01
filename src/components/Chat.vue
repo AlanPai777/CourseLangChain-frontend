@@ -34,6 +34,7 @@ import VueMarkdown from "vue-markdown-render";
 
 const props = defineProps<{
   input: string;
+  sessionId: string;
 }>();
 const emits = defineEmits<{
   (e: "finish", message: ChatMessage): void;
@@ -44,9 +45,14 @@ const output = ref("");
 const canStop = ref(false);
 const outputError = ref(false);
 
-const { status, data, error, close } = useEventSource(
-  "/api/ask?question=" + props.input
-);
+// 用 URLSearchParams 組 query:問題裡的 &、#、+、空白都會被正確編碼
+// (先前直接字串相接,含 & 的提問會被截斷成兩個參數)
+const query = new URLSearchParams({
+  question: props.input,
+  session_id: props.sessionId,
+});
+
+const { status, data, error, close } = useEventSource(`/api/ask?${query}`);
 
 watch(data, (value) => {
   if (value) {
