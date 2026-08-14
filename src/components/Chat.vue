@@ -15,6 +15,7 @@
           class="loading loading-dots loading-md"
         ></span>
         <VueMarkdown v-else :source="output" class="overflow-auto" />
+        <CourseCandidates v-if="candidates.length" :courses="candidates" />
         <Teleport to="#StopGeneration">
           <button class="btn" @click="close" v-if="canStop">
             <Icon icon="mingcute:stop-line" class="w-4 h-4" />
@@ -31,6 +32,7 @@ import { ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 import { useEventSource } from "@vueuse/core";
 import VueMarkdown from "vue-markdown-render";
+import CourseCandidates from "./CourseCandidates.vue";
 
 const props = defineProps<{
   input: string;
@@ -44,6 +46,8 @@ const emits = defineEmits<{
 const output = ref("");
 const canStop = ref(false);
 const outputError = ref(false);
+// 後端側通道送來的候選課程,渲染成「加入課表」卡片(course_id 未經 LLM 轉述)
+const candidates = ref<CourseCandidate[]>([]);
 
 // 用 URLSearchParams 組 query:問題裡的 &、#、+、空白都會被正確編碼
 // (先前直接字串相接,含 & 的提問會被截斷成兩個參數)
@@ -55,11 +59,16 @@ const query = new URLSearchParams({
 const { status, data, error, close } = useEventSource(`/api/ask?${query}`);
 
 watch(data, (value) => {
-  if (value) {
-    const token = JSON.parse(value).data;
-    if (token === "SPECIAL_END_TOKEN") close();
-    else output.value += token;
+  if (!value) return;
+  const payload = JSON.parse(value);
+  // type=courses 是側通道事件(候選課程),不是文字 token,別串進 output
+  if (payload.type === "courses") {
+    candidates.value.push(...(payload.courses ?? []));
+    return;
   }
+  const token = payload.data;
+  if (token === "SPECIAL_END_TOKEN") close();
+  else output.value += token;
 });
 
 watch(error, (err) => {
