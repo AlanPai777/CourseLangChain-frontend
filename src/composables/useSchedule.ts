@@ -42,7 +42,10 @@ export function useSchedule() {
     }
   };
 
-  /** 加課。後端遇衝堂會自動移除衝堂舊課,並回傳 removed 供提示。 */
+  /**
+   * 加課。後端遇衝堂、或加入同一門課的另一個班時,會自動移除舊的那幾門,
+   * 並回傳 removed 與 removed_reasons({course_id: "same_name"|"conflict"})供提示。
+   */
   const addCourse = async (courseId: string) => {
     loading.value = true;
     lastMessage.value = "";
@@ -53,11 +56,19 @@ export function useSchedule() {
       });
       apply(res.data);
       const removed: ScheduleCourse[] = res.data.removed ?? [];
+      const reasons: Record<string, string> = res.data.removed_reasons ?? {};
       if (res.data.already) {
         lastMessage.value = `${res.data.added.name} 已經在課表裡了`;
       } else if (removed.length) {
-        const names = removed.map((c) => `${c.name}(${c.time})`).join("、");
-        lastMessage.value = `已加入 ${res.data.added.name},因衝堂移除:${names}`;
+        // 一律照後端標記的原因講 —— 同名換班時說「衝堂」是假的,會讓人以為時間撞了
+        const names = removed
+          .map((c) => {
+            const why =
+              reasons[c.course_id] === "same_name" ? "同一門課的另一班" : "衝堂";
+            return `${c.name}(${c.time},${why})`;
+          })
+          .join("、");
+        lastMessage.value = `已加入 ${res.data.added.name},已移除:${names}`;
       } else {
         lastMessage.value = `已加入 ${res.data.added.name}`;
       }

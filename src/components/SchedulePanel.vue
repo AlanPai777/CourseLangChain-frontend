@@ -121,7 +121,7 @@
       </button>
 
       <p class="text-xs opacity-50 leading-relaxed border-t border-base-300 pt-2">
-        加入的課若與現有課程衝堂,會自動替換掉衝堂的那幾門。
+        加入的課若與現有課程衝堂、或是同一門課的另一個班,會自動替換掉舊的那幾門。
       </p>
     </div>
   </div>
