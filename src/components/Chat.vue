@@ -61,9 +61,13 @@ const { status, data, error, close } = useEventSource(`/api/ask?${query}`);
 watch(data, (value) => {
   if (!value) return;
   const payload = JSON.parse(value);
-  // type=courses 是側通道事件(候選課程),不是文字 token,別串進 output
-  if (payload.type === "courses") {
-    candidates.value.push(...(payload.courses ?? []));
+  // 側通道事件一律帶 type 且沒有 data 欄位。不認得的 type 必須在這裡就 return:
+  // 否則 payload.data 是 undefined,會被下面的 += 串成字面上的 "undefined"。
+  // (後端日後新增事件型別時,舊前端才不會在畫面上吐字。)
+  if (payload.type) {
+    if (payload.type === "courses") {
+      candidates.value.push(...(payload.courses ?? []));
+    }
     return;
   }
   const token = payload.data;
