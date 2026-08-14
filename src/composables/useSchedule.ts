@@ -17,10 +17,21 @@ export interface ScheduleCourse {
   slots: [string, string][];
 }
 
+/** 學期選單的一個選項。選項來自後端(data.db 實際有資料的學期),前端不寫死年份。 */
+export interface Term {
+  value: string; // "1142" —— 4 碼,course_id 的前綴
+  // data.db 的 y / s 欄位是 TEXT,所以實際拿到的是字串;只用於顯示,不做算術
+  year: string | number;
+  semester: string | number;
+  count: number;
+}
+
 const courses = ref<ScheduleCourse[]>([]);
 const totalCredits = ref(0);
 const loading = ref(false);
 const lastMessage = ref("");
+const terms = ref<Term[]>([]);
+const currentTerm = ref("");
 
 export function useSchedule() {
   const { sessionId } = useSession();
@@ -28,6 +39,18 @@ export function useSchedule() {
   const apply = (data: any) => {
     courses.value = data.courses ?? [];
     totalCredits.value = data.total_credits ?? 0;
+  };
+
+  /**
+   * 載入學期選單。選項一律由後端給(data.db 實際有的學期),前端不寫死 112~115 之類的
+   * 範圍——寫死的話使用者會選到沒有資料的學期,拿到「找不到課程代碼」而以為是 bug。
+   */
+  const loadTerms = async () => {
+    const res = await axios.get("/api/terms");
+    terms.value = res.data.terms ?? [];
+    if (!currentTerm.value) {
+      currentTerm.value = res.data.current ?? terms.value[0]?.value ?? "";
+    }
   };
 
   const refresh = async () => {
@@ -46,13 +69,15 @@ export function useSchedule() {
    * 加課。後端遇衝堂、或加入同一門課的另一個班時,會自動移除舊的那幾門,
    * 並回傳 removed 與 removed_reasons({course_id: "same_name"|"conflict"})供提示。
    */
-  const addCourse = async (courseId: string) => {
+  const addCourse = async (courseId: string, term?: string) => {
     loading.value = true;
     lastMessage.value = "";
     try {
       const res = await axios.post("/api/schedule", {
         session_id: sessionId.value,
         course_id: courseId.trim(),
+        // 只有輸入 9 碼時後端才會用到 term 來補前綴;13 碼一律原樣通過
+        term: term ?? currentTerm.value,
       });
       apply(res.data);
       const removed: ScheduleCourse[] = res.data.removed ?? [];
@@ -119,6 +144,9 @@ export function useSchedule() {
     totalCredits,
     loading,
     lastMessage,
+    terms,
+    currentTerm,
+    loadTerms,
     refresh,
     addCourse,
     removeCourse,

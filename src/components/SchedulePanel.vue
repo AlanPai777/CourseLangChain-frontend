@@ -26,13 +26,27 @@
     </button>
 
     <div v-if="open" class="flex flex-col gap-3 p-3 pt-0 overflow-auto">
-      <!-- 新增:輸入課程代碼 -->
+      <!--
+        新增:先選學期,再輸入課程代碼。
+        全校課程查詢系統顯示的是 9 碼科目代號,課表要用的是 13 碼(學期 + 9 碼),
+        選單就是那 4 碼前綴——順帶讓「現在看的是哪個學期」在畫面上看得見。
+      -->
       <form class="flex gap-1" @submit.prevent="submitAdd">
+        <select
+          v-model="term"
+          class="select select-bordered select-sm shrink-0"
+          :disabled="loading || terms.length <= 1"
+          title="課程代碼所屬學期"
+        >
+          <option v-for="t in terms" :key="t.value" :value="t.value">
+            {{ t.year }}-{{ t.semester }}
+          </option>
+        </select>
         <input
           v-model="newId"
           type="text"
           inputmode="numeric"
-          placeholder="輸入 13 位課程代碼"
+          placeholder="課程代碼(9 或 13 碼)"
           class="input input-bordered input-sm w-full"
           :disabled="loading"
         />
@@ -128,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 import WeekTimetable from "./WeekTimetable.vue";
 import { useSchedule, type ScheduleCourse } from "../composables/useSchedule";
@@ -152,18 +166,39 @@ const {
   totalCredits,
   loading,
   lastMessage,
+  terms,
+  currentTerm,
+  loadTerms,
   refresh,
   addCourse,
   removeCourse,
   clearSchedule,
 } = useSchedule();
 
+// 選單目前選到的學期。預設跟隨後端回報的「系統鎖定學期」;
+// currentTerm 是模組級共享狀態,元件重新掛載時可能已經有值,所以初值也要讀一次。
+const term = ref(currentTerm.value);
+watch(currentTerm, (v) => {
+  if (v && !term.value) term.value = v;
+});
+
+// 貼進 13 碼時,前 4 碼本來就是學期,把選單同步過去,免得畫面顯示的學期跟實際加的課不一致
+watch(newId, (v) => {
+  const id = v.trim();
+  if (id.length === 13 && terms.value.some((t) => t.value === id.slice(0, 4))) {
+    term.value = id.slice(0, 4);
+  }
+});
+
 const submitAdd = async () => {
   const id = newId.value.trim();
   if (!id) return;
-  const ok = await addCourse(id);
+  const ok = await addCourse(id, term.value);
   if (ok) newId.value = "";
 };
 
-onMounted(refresh);
+onMounted(() => {
+  loadTerms();
+  refresh();
+});
 </script>
