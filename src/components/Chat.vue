@@ -26,12 +26,26 @@
         </template>
       </div>
       <div class="chat-bubble" :class="{ 'chat-bubble-error': outputError }">
+        <span v-if="aborted" class="text-sm opacity-70">已停止生成。</span>
         <span
-          v-if="output.length === 0"
+          v-else-if="output.length === 0"
           class="loading loading-dots loading-md"
         ></span>
         <VueMarkdown v-else :source="output" class="overflow-auto" />
         <CourseCandidates v-if="candidates.length" :courses="candidates" />
+        <!--
+          錯誤獨立顯示,不進 markdown 串流。技術細節預設摺疊,但一定看得到 ——
+          先前它被丟棄,畫面上只剩「系統發生錯誤」,連是哪個例外都不知道。
+        -->
+        <div v-if="errorMessage" class="mt-2 text-sm">
+          <p>{{ errorMessage }}</p>
+          <details v-if="errorDetail" class="mt-1">
+            <summary class="cursor-pointer text-xs opacity-70">技術細節</summary>
+            <pre
+              class="mt-1 text-xs whitespace-pre-wrap break-all opacity-80"
+            >{{ errorDetail }}</pre>
+          </details>
+        </div>
         <Teleport to="#StopGeneration">
           <button class="btn" @click="close" v-if="canStop">
             <Icon icon="mingcute:stop-line" class="w-4 h-4" />
@@ -68,6 +82,13 @@ const candidates = ref<CourseCandidate[]>([]);
 // --- 等待狀態列 ---------------------------------------------------------
 // 這個元件一掛載就發出請求(useEventSource 在 setup 就開始連),所以計時從這裡起算。
 const statusText = ref(""); // 後端 status 事件的最新一句;開始吐字後清掉
+// 後端 SSE 的 error 欄位。後端一直有送,但先前只讀 data 就丟掉了,導致所有故障
+// 在畫面上都長成同一句「系統發生錯誤」,除錯得改用 curl 才看得到原文。
+const errorMessage = ref("");
+const errorDetail = ref("");
+// 使用者按下停止(或連線斷了)而且完全沒有輸出。要有明確收尾,
+// 否則畫面停在 loading dots,看起來還在跑。
+const aborted = ref(false);
 const finished = ref(false);
 const startedAt = Date.now();
 const startedAtText = new Date(startedAt).toLocaleTimeString();
@@ -123,6 +144,14 @@ watch(data, (value) => {
     }
     return;
   }
+  // 帶 error 的 payload 是後端的例外回報。刻意不併進 output:
+  // 模型可能正吐到一半的程式碼區塊裡,混進去會被夾在 ``` 內不換行而捲出畫面。
+  if (payload.error) {
+    outputError.value = true;
+    errorMessage.value = payload.data ?? "系統發生錯誤";
+    errorDetail.value = String(payload.error);
+    return;
+  }
   const token = payload.data;
   if (token === "SPECIAL_END_TOKEN") close();
   else {
@@ -135,7 +164,10 @@ watch(data, (value) => {
 watch(error, (err) => {
   if (err) {
     outputError.value = true;
-    output.value = "An error occurred while attempting to connect.";
+    errorMessage.value = "連線中斷,無法取得回覆。";
+    // EventSource 的錯誤事件不帶訊息(它是 Event 不是 Error),只能報事件型別。
+    // 常見成因:後端逾時、被 proxy 切斷、或伺服器沒起來。
+    errorDetail.value = `EventSource 事件:${err.type}`;
     // 不倚賴 close() 一定會把 status 推到 CLOSED,這裡就先停錶,免得計時器跑不停
     finished.value = true;
     stopTicker();
@@ -152,13 +184,14 @@ watch(status, (value) => {
     canStop.value = false;
     finished.value = true;
     stopTicker();
-    if (output.value.length > 0) {
-      emits("finish", {
-        input: props.input,
-        output: output.value,
-        time: new Date(),
-      });
-    }
+    if (!output.value && !errorMessage.value) aborted.value = true;
+    // 一律通知父層。先前只在「有輸出」時才 emit,導致按下停止(此時 output 還是空的)
+    // 之後 App.vue 的 chatting 停在 true,輸入框再也解不開。
+    emits("finish", {
+      input: props.input,
+      output: output.value,
+      time: new Date(),
+    });
   }
 });
 </script>

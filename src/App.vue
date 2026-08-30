@@ -4,6 +4,7 @@
     <div class="grow flex flex-col md:flex-row p-2 gap-2 overflow-hidden">
       <div class="grow flex flex-col gap-4 overflow-hidden">
         <div
+          ref="scrollBox"
           class="h-full rounded-xl flex flex-col gap-4 py-6 px-2 overflow-auto"
         >
           <Chat
@@ -73,6 +74,28 @@ import { useSchedule } from "./composables/useSchedule";
 import { useProfile } from "./composables/useProfile";
 
 const scrollTarget = ref<HTMLDivElement | null>(null);
+const scrollBox = ref<HTMLDivElement | null>(null);
+
+/**
+ * 自動捲動只在「使用者本來就在底部」時才作用。
+ *
+ * 先前是無條件每 100ms 捲一次,生成期間往上滑會立刻被拉回底部 ——
+ * 一題要跑數十分鐘,等於整段時間都無法回頭看先前的對話與耗時。
+ * 80px 的容忍值讓「幾乎在底部」也算數,不必剛好貼齊。
+ */
+const isNearBottom = () => {
+  const el = scrollBox.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+};
+
+const startAutoScroll = () => {
+  clearInterval(timer.value);
+  // 300ms 就夠:最終答案現在是一次到位,不再逐 token 增長
+  timer.value = setInterval(() => {
+    if (isNearBottom()) scrollTarget.value?.scrollIntoView({ behavior: "smooth" });
+  }, 300);
+};
 const chatting = ref(false);
 const input = ref("");
 const history = ref<string[]>([]);
@@ -100,11 +123,7 @@ const chat = (e?: Event) => {
   history.value.push(input.value);
   input.value = "";
   chatting.value = true;
-  if (scrollTarget.value) {
-    timer.value = setInterval(() => {
-      scrollTarget.value!.scrollIntoView({ behavior: "smooth" });
-    }, 100);
-  }
+  startAutoScroll();
 };
 
 const handleUpload = (e: Event) => {
@@ -122,11 +141,7 @@ const handleUpload = (e: Event) => {
     })
     .then((res) => {
       history.value.push(res.data.text);
-      if (scrollTarget.value) {
-        timer.value = setInterval(() => {
-          scrollTarget.value!.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-      }
+      startAutoScroll();
     });
 };
 
