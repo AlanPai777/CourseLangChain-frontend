@@ -28,6 +28,10 @@ export function useChat(options: UseChatOptions) {
 
   // --- 等待狀態列 ---------------------------------------------------------
   const statusText = ref(""); // 後端 status 事件的最新一句;開始吐字後清掉
+  // 累積版，給展開式「思考過程」面板用——跟 statusText 不同，不會被清掉，
+  // 只會一直往後 push，讓使用者可以回頭看完整的搜尋過程（不是每支後端都會送
+  // status 事件；空陣列時呼叫端應該直接不顯示面板）。
+  const statusLog = ref<string[]>([]);
   const errorMessage = ref("");
   const errorDetail = ref("");
   // 使用者按下停止(或連線斷了)而且完全沒有輸出。要有明確收尾,
@@ -83,6 +87,7 @@ export function useChat(options: UseChatOptions) {
         candidates.value.push(...(payload.courses ?? []));
       } else if (payload.type === "status") {
         statusText.value = payload.text ?? "";
+        if (payload.text) statusLog.value.push(payload.text);
       }
       return;
     }
@@ -140,6 +145,7 @@ export function useChat(options: UseChatOptions) {
     outputError,
     candidates,
     statusText,
+    statusLog,
     errorMessage,
     errorDetail,
     aborted,

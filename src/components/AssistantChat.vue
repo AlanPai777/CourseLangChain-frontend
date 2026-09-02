@@ -9,7 +9,11 @@
           <span class="text-sm">B</span>
         </div>
       </div>
-      <div class="chat-header text-xs opacity-60 mb-1 flex items-center gap-1">
+      <div
+        class="chat-header text-xs opacity-60 mb-1 flex items-center gap-1"
+        :class="{ 'cursor-pointer': statusLog.length }"
+        @click="statusLog.length && toggleLog()"
+      >
         <template v-if="finished">
           <Icon icon="mingcute:check-line" class="h-3 w-3" />
           <span :title="`發問時間 ${startedAtText}`">耗時 {{ elapsedText }}</span>
@@ -19,7 +23,20 @@
           <span>{{ phase }}</span>
           <span>· {{ elapsedText }}</span>
         </template>
+        <Icon
+          v-if="statusLog.length"
+          :icon="logExpanded ? 'mingcute:up-line' : 'mingcute:down-line'"
+          class="h-3 w-3 opacity-60"
+        />
       </div>
+      <!-- 累積式思考過程：不是只顯示最新一句，是全部歷史疊起來——
+           呼應 claude.ai 的 Thinking 面板，開始吐字後自動收合(見下方 script)。 -->
+      <ul
+        v-if="statusLog.length && logExpanded"
+        class="text-xs opacity-50 flex flex-col gap-0.5 mb-2 pl-3 border-l-2 border-base-300"
+      >
+        <li v-for="(line, i) in statusLog" :key="i">{{ line }}</li>
+      </ul>
       <div class="chat-bubble" :class="{ 'chat-bubble-error': outputError }">
         <span v-if="aborted" class="text-sm opacity-70">已停止生成。</span>
         <span
@@ -48,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 import VueMarkdown from "vue-markdown-render";
 import { useChat } from "../composables/useChat";
@@ -73,6 +91,7 @@ const {
   startedAtText,
   elapsedText,
   phase,
+  statusLog,
   close,
 } = useChat({
   input: props.input,
@@ -80,5 +99,17 @@ const {
   endpoint: ASSISTANT_ASK_URL,
   onFinish: (message) => emits("finish", message),
   onError: () => emits("error"),
+});
+
+// 開始吐字後自動收合思考面板(呼應 claude.ai 的 Thinking 面板行為)，
+// 但使用者手動展開/收合過就不再自動介入，尊重使用者的操作。
+const logExpanded = ref(true);
+const userToggledLog = ref(false);
+const toggleLog = () => {
+  logExpanded.value = !logExpanded.value;
+  userToggledLog.value = true;
+};
+watch(output, (val) => {
+  if (val.length > 0 && !userToggledLog.value) logExpanded.value = false;
 });
 </script>
