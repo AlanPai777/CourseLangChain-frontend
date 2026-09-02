@@ -2,7 +2,7 @@
   <div class="h-full flex flex-col">
     <NavBar
       title="政大 AI 助手"
-      :back="{ to: '/schedule', label: '回排課系統' }"
+      :switch-to="{ to: '/schedule', label: '切換至排課系統' }"
       @delete="startNewChat"
     />
     <div class="grow flex flex-col p-2 gap-2 overflow-hidden">

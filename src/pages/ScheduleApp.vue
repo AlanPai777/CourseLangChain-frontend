@@ -1,6 +1,10 @@
 <template>
   <div class="h-full flex flex-col">
-    <NavBar title="排課系統" @delete="startNewChat" />
+    <NavBar
+      title="排課系統"
+      :switch-to="{ to: '/assistant', label: '切換到AI助手' }"
+      @delete="startNewChat"
+    />
     <div class="grow flex flex-col md:flex-row p-2 gap-2 overflow-hidden">
       <div class="grow flex flex-col gap-4 overflow-hidden">
         <div
