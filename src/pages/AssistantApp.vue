@@ -219,11 +219,17 @@ onMounted(() => {
 
 /* NavBar.vue 本身是排課系統共用的元件,樣式不動——這裡只在 assistant 頁的
    scope 內用 :deep() 覆寫顏色,蓋掉 daisyUI 全域主題可能帶來的深色底色,
-   讓 navbar 跟下面米白底的內容視覺一致。NavBar.vue 檔案本身完全沒改。 */
+   讓 navbar 跟下面米白底的內容視覺一致。NavBar.vue 檔案本身完全沒改。
+
+   navbar 是殼、不是內容,刻意跟下面問題/思考記錄/答案的字級調整(1.35倍)
+   脫鉤 —— 這裡固定用比原本 daisyUI 預設更小的尺寸,不會因為內容字級調大
+   就跟著變大,兩者是分開的兩套決定。 */
 .assistant-theme :deep(.navbar) {
   background: var(--surface) !important;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
+  min-height: auto;
+  padding: 0.4rem 1rem;
 }
 .assistant-theme :deep(.navbar .btn) {
   background: transparent;
@@ -234,9 +240,32 @@ onMounted(() => {
   background: var(--accent-soft);
   color: var(--accent);
 }
+.assistant-theme :deep(.navbar .btn.btn-square) {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+.assistant-theme :deep(.navbar .btn.btn-square svg) {
+  width: 15px;
+  height: 15px;
+}
 .assistant-theme :deep(.navbar-center a) {
   font-family: "Noto Serif TC", serif;
   font-weight: 600;
+  font-size: 13px;
+  opacity: 0.85;
+}
+.assistant-theme :deep(.navbar-end .btn.btn-ghost.btn-sm) {
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding: 4px 10px;
+  height: auto;
+  min-height: auto;
+}
+.assistant-theme :deep(.navbar-end .btn.btn-ghost.btn-sm svg) {
+  width: 11px;
+  height: 11px;
 }
 
 /* ---------- 空狀態 ---------- */
@@ -248,7 +277,7 @@ onMounted(() => {
 .empty-title {
   font-family: "Noto Serif TC", serif;
   font-weight: 600;
-  font-size: 28px;
+  font-size: 38px; /* 28px * 1.35,使用者用 artifact 的字級滑桿確認過的倍率 */
   margin: 0 0 24px;
   text-wrap: balance;
 }
@@ -265,7 +294,7 @@ onMounted(() => {
   border: none;
   outline: none;
   background: transparent;
-  font-size: 15px;
+  font-size: 20px; /* 15px * 1.35 */
   color: var(--ink);
   font-family: inherit;
 }
@@ -279,7 +308,7 @@ onMounted(() => {
   border-top: 1px solid var(--line);
 }
 .composer-hint {
-  font-size: 12.5px;
+  font-size: 17px; /* 12.5px * 1.35 */
   color: var(--ink-faint);
   display: inline-flex;
   align-items: center;

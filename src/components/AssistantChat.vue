@@ -140,7 +140,7 @@ watch(output, (val) => {
   padding: 10px 14px;
   border-radius: 14px 14px 4px 14px;
   max-width: 80%;
-  font-size: 14.5px;
+  font-size: 19.5px; /* 14.5px * 1.35,使用者用 artifact 的字級滑桿確認過的倍率 */
 }
 
 .assistant-turn {
@@ -169,7 +169,7 @@ watch(output, (val) => {
   border-radius: 999px;
   background: var(--surface, #fff);
   border: 1px solid var(--line, #e6ddcc);
-  font-size: 12.5px;
+  font-size: 17px; /* 12.5px * 1.35 */
   color: var(--ink-soft, #746a5d);
   user-select: none;
 }
@@ -185,16 +185,18 @@ watch(output, (val) => {
 }
 .thinking-row[aria-expanded="true"] .thinking-chevron { transform: rotate(180deg); }
 
+/* 不設 max-height/overflow-y —— log 有多長就長多長,交給 AssistantApp.vue
+   的 scrollBox(它自己的 overflow-auto + 貼底自動捲動)去處理,不要在這裡
+   另開一個獨立捲動的小視窗逼使用者自己滑。這樣「log 往下長、答案接著出現
+   在下面」是同一條自然的頁面流。 */
 .thinking-log {
-  max-height: 168px;
-  overflow-y: auto;
   margin: 0 0 0 4px;
   padding: 2px 0 2px 14px;
   border-left: 2px solid var(--line, #e6ddcc);
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 12px;
+  font-size: 16px; /* 12px * 1.35 */
   color: var(--ink-faint, #a89d8c);
   line-height: 1.5;
 }
@@ -204,7 +206,7 @@ watch(output, (val) => {
   border: 1px solid var(--line, #e6ddcc);
   border-radius: 14px 14px 14px 4px;
   padding: 16px 18px;
-  font-size: 14.5px;
+  font-size: 19.5px; /* 14.5px * 1.35 */
   color: var(--ink, #2a241d);
   box-shadow: var(--shadow, none);
   min-width: 0;
