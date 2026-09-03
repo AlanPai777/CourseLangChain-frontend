@@ -22,7 +22,7 @@
         <Icon icon="mingcute:transfer-line" class="h-4 w-4" />
         {{ switchTo.label }}
       </router-link>
-      <Theme />
+      <Theme v-if="!hideTheme" />
     </div>
   </div>
 </template>
@@ -35,8 +35,9 @@ withDefaults(
   defineProps<{
     title?: string;
     switchTo?: { to: string; label: string };
+    hideTheme?: boolean;
   }>(),
-  { title: "Course LangChain" }
+  { title: "Course LangChain", hideTheme: false }
 );
 
 const emits = defineEmits<{
