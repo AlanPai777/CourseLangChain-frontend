@@ -1,5 +1,4 @@
-import { computed, onUnmounted, ref, watch } from "vue";
-import { useEventSource } from "@vueuse/core";
+import { computed, onUnmounted, ref } from "vue";
 
 export interface UseChatOptions {
   input: string;
@@ -75,9 +74,37 @@ export function useChat(options: UseChatOptions) {
     session_id: options.sessionId,
   });
 
-  const { status, data, error, close } = useEventSource(`${endpoint}?${query}`);
+  // 刻意不用 @vueuse/core 的 useEventSource:它把每則 SSE 訊息存進一個 Vue
+  // ref 再靠 watch(data, ...) 分派——但 Vue 的 ref setter 會先做
+  // hasChanged(newValue, oldValue) 檢查，兩則訊息的原始字串「完全相同」時會
+  // 直接跳過、不觸發任何 watcher。逐 token 串流很容易連續兩個 token 剛好是
+  // 同一個字元（例如分機號碼「62275」中間那兩個連續的 "2"），這時第二個
+  // token 對應的 SSE payload 跟前一個逐位元組相同，會被 Vue 悄悄吞掉、永遠
+  // 不會被加進 output——這正是分機號碼位數少一碼的成因（62275 顯示成
+  // 6275）。改用原生 EventSource、在 onmessage callback 裡直接同步處理，
+  // 每一則訊息都保證被處理恰好一次，不管內容是否跟前一則相同。
+  let es: EventSource | null = null;
+  let closed = false;
 
-  watch(data, (value) => {
+  const close = () => {
+    if (closed) return; // 保證 onFinish 只呼叫一次,即使 close() 被多個路徑觸發
+    closed = true;
+    es?.close();
+    es = null;
+    canStop.value = false;
+    finished.value = true;
+    stopTicker();
+    if (!output.value && !errorMessage.value) aborted.value = true;
+    // 一律通知呼叫端。按下停止時 output 還是空的,也要 emit,
+    // 否則呼叫端的 chatting 停在 true,輸入框再也解不開。
+    options.onFinish?.({
+      input: options.input,
+      output: output.value,
+      time: new Date(),
+    });
+  };
+
+  const handleMessage = (value: string) => {
     if (!value) return;
     const payload = JSON.parse(value);
     // 側通道事件一律帶 type 且沒有 data 欄位。不認得的 type 必須在這裡就 return:
@@ -110,39 +137,22 @@ export function useChat(options: UseChatOptions) {
       statusText.value = "";
       output.value += token;
     }
-  });
+  };
 
-  watch(error, (err) => {
-    if (err) {
-      outputError.value = true;
-      errorMessage.value = "連線中斷,無法取得回覆。";
-      // EventSource 的錯誤事件不帶訊息(它是 Event 不是 Error),只能報事件型別。
-      errorDetail.value = `EventSource 事件:${err.type}`;
-      finished.value = true;
-      stopTicker();
-      options.onError?.();
-      close();
-    }
-  });
-
-  watch(status, (value) => {
-    if (value === "OPEN") {
-      canStop.value = true;
-    } else if (value === "CLOSED") {
-      close();
-      canStop.value = false;
-      finished.value = true;
-      stopTicker();
-      if (!output.value && !errorMessage.value) aborted.value = true;
-      // 一律通知呼叫端。按下停止時 output 還是空的,也要 emit,
-      // 否則呼叫端的 chatting 停在 true,輸入框再也解不開。
-      options.onFinish?.({
-        input: options.input,
-        output: output.value,
-        time: new Date(),
-      });
-    }
-  });
+  es = new EventSource(`${endpoint}?${query}`);
+  es.onopen = () => {
+    canStop.value = true;
+  };
+  es.onmessage = (e) => handleMessage(e.data);
+  es.onerror = (err) => {
+    if (closed) return; // 正常關閉(SPECIAL_END_TOKEN/使用者按停止)後瀏覽器可能還會多送一次 error,略過
+    outputError.value = true;
+    errorMessage.value = "連線中斷,無法取得回覆。";
+    // EventSource 的錯誤事件不帶訊息(它是 Event 不是 Error),只能報事件型別。
+    errorDetail.value = `EventSource 事件:${(err as Event).type}`;
+    options.onError?.();
+    close();
+  };
 
   return {
     output,
