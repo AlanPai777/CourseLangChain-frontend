@@ -88,6 +88,11 @@ export function useChat(options: UseChatOptions) {
       } else if (payload.type === "status") {
         statusText.value = payload.text ?? "";
         if (payload.text) statusLog.value.push(payload.text);
+      } else if (payload.type === "reset") {
+        // self_eval 判定剛才那份已經打完的答案不夠完整，後端要重新生成一份。
+        // 已經打出來的字不是白費——搬進思考記錄留個痕跡，而不是憑空消失。
+        statusLog.value.push("已產生初版答案，但 self_eval 判斷不完整，重新生成中");
+        output.value = "";
       }
       return;
     }
