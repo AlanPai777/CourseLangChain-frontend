@@ -55,7 +55,10 @@
 
         <div class="answer-bubble" :class="{ 'is-error': outputError }">
           <span v-if="aborted" class="text-sm opacity-70">已停止生成。</span>
-          <span v-else-if="output.length === 0" class="loading loading-dots loading-md"></span>
+          <span
+            v-else-if="output.length === 0 && !finished"
+            class="loading loading-dots loading-md"
+          ></span>
           <VueMarkdown v-else :source="output" class="answer-markdown" />
           <div v-if="errorMessage" class="mt-2 text-sm">
             <p>{{ errorMessage }}</p>
@@ -66,12 +69,6 @@
               >{{ errorDetail }}</pre>
             </details>
           </div>
-          <Teleport to="#StopGeneration">
-            <button class="btn" @click="close" v-if="canStop">
-              <Icon icon="mingcute:stop-line" class="w-4 h-4" />
-              Stop Generate
-            </button>
-          </Teleport>
         </div>
       </div>
     </div>
@@ -92,6 +89,7 @@ const props = defineProps<{
 const emits = defineEmits<{
   (e: "finish", message: ChatMessage): void;
   (e: "error"): void;
+  (e: "canstop", value: boolean): void;
 }>();
 
 const {
@@ -126,6 +124,12 @@ const toggleLog = () => {
 watch(output, (val) => {
   if (val.length > 0 && !userToggledLog.value) logExpanded.value = false;
 });
+
+// 停止鈕不再用 Teleport(踩過兩次目標元素時序坑,見 commit history)——
+// 改成父層 AssistantApp.vue 自己畫按鈕,這裡只負責:(1) canStop 變動時
+// 通知父層要不要顯示停止鈕,(2) 把 close 暴露出去讓父層按下時能呼叫。
+watch(canStop, (val) => emits("canstop", val));
+defineExpose({ stop: close });
 </script>
 
 <style scoped>
