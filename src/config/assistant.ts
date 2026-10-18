@@ -8,4 +8,5 @@
 export const ASSISTANT_API_BASE = import.meta.env.VITE_ASSISTANT_API_BASE ?? "";
 
 export const ASSISTANT_ASK_URL = `${ASSISTANT_API_BASE}/ask`;
+export const ASSISTANT_CONFIG_URL = `${ASSISTANT_API_BASE}/config`;
 export const ASSISTANT_UPLOAD_URL = `${ASSISTANT_API_BASE}/upload`;

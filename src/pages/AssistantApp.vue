@@ -27,6 +27,7 @@
               麥克風輸入語音
             </span>
             <div class="composer-actions">
+              <LiveSwitch v-model="liveOn" :disabled="!liveAvailable" />
               <label for="assistant-upload-empty">
                 <div class="composer-icon-btn" :class="{ 'is-disabled': chatting }">
                   <Icon icon="mingcute:mic-fill" class="h-5 w-5" />
@@ -61,12 +62,16 @@
           <AssistantChat
             :input="i"
             :session-id="sessionId"
+            :live="liveOn && liveAvailable"
+            :live-available="liveAvailable"
+            :logo-shape="logoShape"
             v-for="(i, idx) in history"
             :key="idx"
             :ref="(el) => setChatRef(idx, el)"
             @finish="finishChat"
             @error="finishErrorChat"
             @canstop="(v) => onCanStop(idx, v)"
+            @requery="requeryLive"
           />
           <div ref="scrollTarget" />
         </div>
@@ -80,7 +85,7 @@
           <input
             type="text"
             v-model="input"
-            placeholder="Type here"
+            placeholder="輸入問題…"
             class="thread-input w-full"
           />
         </div>
@@ -102,6 +107,7 @@
         >
           <Icon icon="mingcute:stop-fill" class="h-4 w-4" />
         </button>
+        <LiveSwitch v-model="liveOn" :disabled="!liveAvailable" />
         <label for="assistant-upload">
           <div class="thread-mic" :class="{ 'is-disabled': chatting }">
             <Icon icon="mingcute:mic-fill" class="h-5 w-5" />
@@ -127,8 +133,10 @@ import { onMounted, ref } from "vue";
 import { Icon } from "@iconify/vue";
 import NavBar from "../components/NavBar.vue";
 import AssistantChat from "../components/AssistantChat.vue";
+import LiveSwitch from "../components/LiveSwitch.vue";
 import { useSession } from "../composables/useSession";
-import { ASSISTANT_API_BASE, ASSISTANT_UPLOAD_URL } from "../config/assistant";
+import { useAssistantPrefs } from "../composables/useAssistantPrefs";
+import { ASSISTANT_API_BASE, ASSISTANT_CONFIG_URL, ASSISTANT_UPLOAD_URL } from "../config/assistant";
 
 const scrollTarget = ref<HTMLDivElement | null>(null);
 const scrollBox = ref<HTMLDivElement | null>(null);
@@ -150,6 +158,12 @@ const chatting = ref(false);
 const input = ref("");
 const history = ref<string[]>([]);
 const timer = ref(0);
+
+// 「查現場」開關(預設開、記在 localStorage)與網站標誌形狀(先用圓形,?logo=square 可切換)
+const { liveOn, logoShape } = useAssistantPrefs();
+// 後端總開關(LIVE_FETCH=off)關著時開關灰掉;GET /config 失敗(舊後端、連不上)就當作可用——
+// 這題實際有沒有查現場以串流開頭的 meta 事件為準,不是這個值
+const liveAvailable = ref(true);
 
 // 獨立於排課系統的 session namespace,避免兩邊的 LangGraph thread 互相污染
 const { sessionId, resetSession } = useSession("assistant");
@@ -190,6 +204,15 @@ const chat = (e?: Event) => {
   startAutoScroll();
 };
 
+// 關閉現場的答案旁邊的「改用查現場重新查詢」:打開開關、把同一個問題再問一次
+const requeryLive = (question: string) => {
+  if (chatting.value) return;
+  liveOn.value = true;
+  history.value.push(question);
+  chatting.value = true;
+  startAutoScroll();
+};
+
 const handleUpload = (e: Event) => {
   e.preventDefault();
   const formData = new FormData();
@@ -220,6 +243,16 @@ const finishErrorChat = () => {
 };
 
 onMounted(() => {
+  if (ASSISTANT_API_BASE) {
+    axios
+      .get(ASSISTANT_CONFIG_URL)
+      .then((res) => {
+        liveAvailable.value = res.data?.live_available !== false;
+      })
+      .catch(() => {
+        /* 舊後端沒有 /config:維持預設(可用) */
+      });
+  }
   if (!ASSISTANT_API_BASE) {
     // 待後端確認 /ask、/upload 端點後在 .env 補上 VITE_ASSISTANT_API_BASE——
     // 在那之前這頁的對話與語音輸入會打到錯誤的相對路徑,刻意留這個警告而不是假裝能動。

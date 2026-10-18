@@ -18,16 +18,16 @@
       <div class="turn-body">
         <div
           class="thinking-row"
-          :class="{ 'is-done': finished, 'is-clickable': statusLog.length }"
+          :class="{ 'is-done': finished, 'is-clickable': timeline.length }"
           role="button"
           tabindex="0"
           :aria-expanded="logExpanded"
-          @click="statusLog.length && toggleLog()"
-          @keydown.enter="statusLog.length && toggleLog()"
+          @click="timeline.length && toggleLog()"
+          @keydown.enter="timeline.length && toggleLog()"
         >
           <template v-if="finished">
             <Icon icon="mingcute:check-line" class="h-4 w-4 thinking-check" />
-            <span :title="`發問時間 ${startedAtText}`">耗時 {{ elapsedText }}</span>
+            <span :title="`發問時間 ${startedAtText}`">{{ finishedText }}</span>
           </template>
           <template v-else>
             <span class="walker-bob">
@@ -40,18 +40,21 @@
             <span class="thinking-time">· {{ elapsedText }}</span>
           </template>
           <Icon
-            v-if="statusLog.length"
+            v-if="timeline.length"
             :icon="logExpanded ? 'mingcute:up-line' : 'mingcute:down-line'"
             class="h-3 w-3 thinking-chevron"
           />
         </div>
 
-        <!-- 累積式思考過程:不去重、不合併,statusLog 有幾筆就顯示幾行,
-             讓使用者看得出完整的流程順序 —— 只用 max-height + 捲動避免
-             撐爆版面,不是靠刪減內容。 -->
-        <ul v-if="statusLog.length && logExpanded" class="thinking-log">
-          <li v-for="(line, i) in statusLog" :key="i">{{ line }}</li>
-        </ul>
+        <!-- 進度清單(仿 Claude 的 Searched the web):時間順序混排說明行與動作區塊,區塊點開是頁面列,
+             整列是連結。第一行(上面的膠囊)本身就是整個清單的收合開關。 -->
+        <ProgressList v-if="timeline.length && logExpanded" :items="timeline" :logo-shape="logoShape" />
+
+        <!-- 等太久才出現(後端 120/300 秒);開始吐字後就消失 -->
+        <div v-if="slowNotice && !finished && output.length === 0" class="slow-notice" role="status">
+          <Icon icon="mingcute:time-line" class="h-4 w-4" />
+          <span>{{ slowNotice }}</span>
+        </div>
 
         <div class="answer-bubble" :class="{ 'is-error': outputError }">
           <span v-if="aborted" class="text-sm opacity-70">已停止生成。</span>
@@ -59,7 +62,7 @@
             v-else-if="output.length === 0 && !finished"
             class="loading loading-dots loading-md"
           ></span>
-          <VueMarkdown v-else :source="output" class="answer-markdown" />
+          <VueMarkdown v-else :source="renderedOutput" :options="{ linkify: true }" class="answer-markdown" @click="openLinksInNewTab" />
           <div v-if="errorMessage" class="mt-2 text-sm">
             <p>{{ errorMessage }}</p>
             <details v-if="errorDetail" class="mt-1">
@@ -70,26 +73,53 @@
             </details>
           </div>
         </div>
+
+        <!-- 答案下方:來源按鈕(America.gov 式,點開是依網站分組的視窗)與「改用查現場重新查詢」 -->
+        <div v-if="finished && !outputError && sourceCount > 0" class="answer-actions">
+          <button type="button" class="sources-pill" @click="sourcesOpen = true">
+            <span class="stack">
+              <SiteLogo v-for="g in sources!.groups.slice(0, 3)" :key="g.host" :host="g.host === 'fixed' ? '' : g.host" :name="g.name" :shape="logoShape" />
+            </span>
+            <span>來源 {{ sourceCount }} 筆 · {{ sources!.groups.length }} 個網站</span>
+          </button>
+        </div>
+        <div v-if="canRequeryLive" class="requery-bar">
+          <Icon icon="mingcute:information-line" class="h-4 w-4" />
+          <span class="grow">本題沒有查官網，答案來自資料庫（{{ dateText(meta!.snapshotDate) }}更新），之後官網可能已有變動。</span>
+          <button type="button" class="requery-btn" @click="emits('requery', props.input)">改用「查現場」重新查詢</button>
+        </div>
       </div>
     </div>
+
+    <SourcesModal v-if="sources" :sources="sources" :open="sourcesOpen" :logo-shape="logoShape" @close="sourcesOpen = false" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 import VueMarkdown from "vue-markdown-render";
 import { useChat } from "../composables/useChat";
 import { ASSISTANT_ASK_URL } from "../config/assistant";
+import ProgressList from "./ProgressList.vue";
+import SourcesModal from "./SourcesModal.vue";
+import SiteLogo from "./SiteLogo.vue";
+import { dateText } from "../utils/progressStyle";
 
 const props = defineProps<{
   input: string;
   sessionId: string;
+  /** 這一題要不要查現場(前端開關);每題在建立時決定,之後切換開關不影響已經送出的題目 */
+  live?: boolean;
+  /** 後端總開關有沒有開(GET /config);關著就不提供「改用查現場重新查詢」 */
+  liveAvailable?: boolean;
+  logoShape?: "circle" | "square";
 }>();
 const emits = defineEmits<{
   (e: "finish", message: ChatMessage): void;
   (e: "error"): void;
   (e: "canstop", value: boolean): void;
+  (e: "requery", question: string): void;
 }>();
 
 const {
@@ -103,15 +133,45 @@ const {
   startedAtText,
   elapsedText,
   phase,
-  statusLog,
+  timeline,
+  meta,
+  sources,
+  slowNotice,
   close,
 } = useChat({
   input: props.input,
   sessionId: props.sessionId,
   endpoint: ASSISTANT_ASK_URL,
+  live: props.live,
   onFinish: (message) => emits("finish", message),
   onError: () => emits("error"),
 });
+
+// 上面膠囊完成後的文字:知道這題實際有沒有查官網(後端的 meta 事件)就說清楚,不知道就只寫耗時
+const finishedText = computed(() => {
+  if (!meta.value) return `耗時 ${elapsedText.value}`;
+  return meta.value.live ? `已查詢官網 · 耗時 ${elapsedText.value}` : `未查官網 · 使用資料庫 · 耗時 ${elapsedText.value}`;
+});
+
+// 後端偶爾會寫出 LaTeX 的箭頭($\rightarrow$),這裡換成真正的箭頭字元(純外觀)
+const renderedOutput = computed(() => output.value.replace(/\$\\(?:rightarrow|to)\$/g, "→"));
+
+// 答案裡的連結一律開新分頁,不要把正在看的對話換掉
+const openLinksInNewTab = (e: MouseEvent) => {
+  const a = (e.target as HTMLElement | null)?.closest("a");
+  const href = a?.getAttribute("href");
+  if (a && href && /^https?:/i.test(href)) {
+    e.preventDefault();
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+};
+
+const sourcesOpen = ref(false);
+const sourceCount = computed(() => (sources.value ? sources.value.groups.reduce((n, g) => n + g.items.length, 0) : 0));
+// 關閉現場的題目,答案旁邊提供一鍵改用現場重查(後端總開關關著就不提供)
+const canRequeryLive = computed(
+  () => finished.value && !outputError.value && !!meta.value && meta.value.live === false && props.liveAvailable !== false && meta.value.liveAvailable
+);
 
 // 開始吐字後自動收合思考面板(呼應 claude.ai 的 Thinking 面板行為)，
 // 但使用者手動展開/收合過就不再自動介入，尊重使用者的操作。
@@ -204,6 +264,55 @@ defineExpose({ stop: close });
   color: var(--ink-faint, #a89d8c);
   line-height: 1.5;
 }
+
+.slow-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f8ecd2;
+  color: #7d5610;
+  font-size: 16px;
+}
+.answer-actions { display: flex; align-items: center; gap: 8px; }
+.sources-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #e6ddcc);
+  background: var(--surface, #fff);
+  color: var(--ink, #2a241d);
+  font-size: 15px;
+  cursor: pointer;
+}
+.sources-pill:hover { border-color: var(--accent, #8c2f39); }
+.sources-pill .stack { display: inline-flex; }
+.sources-pill .stack :deep(.site-logo) { margin-right: -6px; border: 2px solid var(--surface, #fff); }
+.requery-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #ece6da;
+  color: #5e5546;
+  font-size: 15px;
+}
+.requery-btn {
+  flex: none;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent, #8c2f39);
+  background: var(--surface, #fff);
+  color: var(--accent, #8c2f39);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.requery-btn:hover { background: var(--accent-soft, #f3e3e0); }
 
 .answer-bubble {
   background: var(--surface, #fff);
